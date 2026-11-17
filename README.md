@@ -115,6 +115,7 @@ cd /data/local/tmp/qemu-gzvm
 chmod +x qemu-system-aarch64
 
 ./qemu-system-aarch64 \
+  -L fw \
   -M virt -accel gzvm -cpu host \
   -smp 4 -m 2048 \
   -kernel Image \
@@ -132,6 +133,11 @@ Notes:
 - `rootfs.img` and `Image` must be raw/plain files on the device.
 - For a UEFI guest, pass your own firmware with `-bios QEMU_EFI.fd`; the package
   only ships `fw/efi-virtio.rom` (a virtio option ROM).
+- `-L fw` points QEMU at the bundled `fw/` directory so it can find
+  `efi-virtio.rom`. Without it, `virtio-net-pci` fails with
+  `failed to find romfile "efi-virtio.rom"`. If you boot with `-kernel` and do
+  not need the NIC option ROM, you can instead append `,romfile=` to the
+  device.
 - Replace `-nographic` with `-display agl` when running inside the Android app
   (see below).
 
@@ -139,6 +145,7 @@ Notes:
 
 ```sh
 ./qemu-system-aarch64 \
+  -L fw \
   -M virt -accel gzvm -cpu host -m 2048 \
   -device virtio-gpu-gl-pci \
   -display agl \
@@ -216,6 +223,7 @@ is used):
 ```kotlin
 val argv = arrayOf(
     "qemu-system-aarch64",
+    "-L", "fw",
     "-M", "virt",
     "-accel", "gzvm",
     "-cpu", "host",
