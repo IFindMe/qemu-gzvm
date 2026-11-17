@@ -32,6 +32,9 @@ epoxyGitUrl="https://github.com/anholt/libepoxy.git"
 libucontextGitUrl="https://github.com/kaniini/libucontext.git"
 liburingGitUrl="https://github.com/axboe/liburing.git"
 virglGitUrl="https://github.com/AnyLaySys/virglrenderer.git"
+termuxDebDir="$srcDir/termux"
+termuxPackages="$termuxDebDir/Packages"
+termuxRepo="https://packages.termux.dev/apt/termux-main"
 case "$hostOs" in
   linux) hostTag="linux-x86_64" ;;
   darwin) hostTag="darwin-x86_64" ;;
@@ -41,12 +44,12 @@ toolchain="$ndkPath/toolchains/llvm/prebuilt/$hostTag"
 hostCC="${HOST_CC:-$(command -v cc || true)}"
 readelf="$toolchain/bin/llvm-readelf"
 strip="$toolchain/bin/llvm-strip"
-commonCFlags="-O3 -flto=thin -ffunction-sections -fdata-sections -fomit-frame-pointer -mcpu=oryon-1 -fPIC -fno-semantic-interposition -ftls-model=global-dynamic"
+commonCFlags="-O3 -flto=thin -ffunction-sections -fdata-sections -fomit-frame-pointer -march=armv8.2-a+dotprod+fp16+lse -fPIC -fno-semantic-interposition -ftls-model=global-dynamic"
 libraryCFlags="$commonCFlags -DNDEBUG"
 commonLdFlags="-flto=thin -Wl,--lto-O3 -Wl,-O3 -Wl,--gc-sections -Wl,--icf=all"
 qemuCFlags="$commonCFlags -fno-unwind-tables -fno-asynchronous-unwind-tables -mbranch-protection=none -Wno-error -I$prefix/include -I$prefix/include/pixman-1"
 qemuLdFlags="-L$prefix/lib $commonLdFlags -Wl,-s -lucontext"
-for tool in cmake curl git make meson ninja patchelf perl pkg-config python3 tar; do
+for tool in ar cmake curl git make meson ninja patchelf perl pkg-config python3 tar zstd; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "缺少工具: $tool" >&2
     exit 1
@@ -95,6 +98,84 @@ fetchGit() {
     git clone --depth 1 --single-branch --no-tags --filter=blob:none --recurse-submodules --shallow-submodules --also-filter-submodules --jobs "$nCpu" "$@" "$url" "$dir"
   fi
 }
+termuxPackagePath() {
+  local packageName="$1"
+  if [ ! -s "$termuxPackages" ]; then
+    mkdir -p "$termuxDebDir"
+    curl -L --fail --retry 3 -o "$termuxPackages" "$termuxRepo/dists/stable/main/binary-aarch64/Packages"
+  fi
+  awk -v p="$packageName" '
+    BEGIN { RS=""; FS="\n" }
+    {
+      name = file = arch = ""
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^Package: /) name = substr($i, 10)
+        if ($i ~ /^Architecture: /) arch = substr($i, 15)
+        if ($i ~ /^Filename: /) file = substr($i, 11)
+      }
+      if (name == p && (arch == "aarch64" || arch == "all")) print file
+    }' "$termuxPackages" | tail -n1
+}
+fetchTermuxDeb() {
+  local packageName="$1" packagePath debName
+  packagePath="$(termuxPackagePath "$packageName")"
+  if [ -z "$packagePath" ]; then
+    echo "缺少 Termux 包: $packageName" >&2
+    return 1
+  fi
+  debName="$(basename "$packagePath")"
+  mkdir -p "$termuxDebDir"
+  if [ ! -f "$termuxDebDir/$debName" ]; then
+    curl -L --fail --retry 3 -C - -o "$termuxDebDir/$debName" "$termuxRepo/$packagePath"
+  fi
+  echo "$termuxDebDir/$debName"
+}
+installTermuxDeps() {
+  local tmpDir="$outDir/termux_tmp"
+  local debName deb d
+  local pkgs=(
+    libslirp libgnutls libgcrypt zstd libpng
+    libgmp libnettle libgpg-error libtasn1
+    libidn2 libunbound libunistring p11-kit ca-certificates liblzma
+    libandroid-support libiconv libevent libc++ zlib
+  )
+  if [ -f "$prefix/lib/pkgconfig/slirp.pc" ] && [ -f "$prefix/lib/pkgconfig/zlib.pc" ]; then
+    return 0
+  fi
+  rm -rf "$tmpDir"
+  mkdir -p "$tmpDir" "$prefix/share/pkgconfig"
+  pushd "$tmpDir"
+  for pkg in "${pkgs[@]}"; do
+    debName="$(fetchTermuxDeb "$pkg")"
+    cp -f "$debName" .
+  done
+  for deb in *.deb; do
+    ar x "$deb"
+    if [ -f data.tar.zst ]; then
+      tar --zstd -xf data.tar.zst
+    elif [ -f data.tar.xz ]; then
+      tar -xf data.tar.xz
+    elif [ -f data.tar.gz ]; then
+      tar -xf data.tar.gz
+    fi
+    rm -f "$deb" data.tar.* control.tar.* debian-binary
+  done
+  for d in usr data/data/com.termux/files/usr; do
+    if [ -d "$d/include" ]; then cp -rf "$d/include/"* "$prefix/include/"; fi
+    if [ -d "$d/lib" ]; then cp -rf "$d/lib/"* "$prefix/lib/"; fi
+    if [ -d "$d/share/pkgconfig" ]; then cp -rf "$d/share/pkgconfig/"* "$prefix/share/pkgconfig/"; fi
+  done
+  if [ -d "$prefix/lib/pkgconfig" ]; then
+    find "$prefix/lib/pkgconfig" -name "*.pc" -type f -exec \
+      sed -i "s|/data/data/com.termux/files/usr|$prefix|g" {} +
+  fi
+  if [ -d "$prefix/share/pkgconfig" ]; then
+    find "$prefix/share/pkgconfig" -name "*.pc" -type f -exec \
+      sed -i "s|/data/data/com.termux/files/usr|$prefix|g" {} +
+  fi
+  popd
+  rm -rf "$tmpDir"
+}
 applyPatch() {
   local repo="$1"
   local patchFile="$2"
@@ -120,8 +201,8 @@ ar = '$AR'
 strip = '$STRIP'
 pkg-config = '${PKG_CONFIG:-pkg-config}'
 [built-in options]
-c_args = ['-O3','-DNDEBUG','-flto=thin','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-mcpu=oryon-1','-fPIC','-fno-semantic-interposition','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
-cpp_args = ['-O3','-DNDEBUG','-flto=thin','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-mcpu=oryon-1','-fPIC','-fno-semantic-interposition','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
+c_args = ['-O3','-DNDEBUG','-flto=thin','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-march=armv8.2-a+dotprod+fp16+lse','-fPIC','-fno-semantic-interposition','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
+cpp_args = ['-O3','-DNDEBUG','-flto=thin','-ffunction-sections','-fdata-sections','-fomit-frame-pointer','-march=armv8.2-a+dotprod+fp16+lse','-fPIC','-fno-semantic-interposition','-ftls-model=global-dynamic','-Wno-error','-I$prefix/include'$extraC]
 c_link_args = ['-L$prefix/lib','-flto=thin','-Wl,--lto-O3','-Wl,-O3','-Wl,--gc-sections','-Wl,--icf=all'$extraLink]
 cpp_link_args = ['-L$prefix/lib','-flto=thin','-Wl,--lto-O3','-Wl,-O3','-Wl,--gc-sections','-Wl,--icf=all'$extraLink]
 [host_machine]
@@ -540,25 +621,19 @@ buildQemu() {
     --target-list=aarch64-softmmu
     --audio-drv-list=aaudio
     --disable-download
-    --disable-docs
     --disable-guest-agent
     --disable-cocoa
-    --disable-curses
     --disable-capstone
-    --disable-gnutls
-    --disable-gcrypt
+    --disable-tpm
     --disable-libusb
     --disable-usb-redir
-    --disable-tpm
+    --disable-virtfs
     --disable-vhost-kernel
     --disable-vhost-net
     --disable-vhost-vdpa
     --disable-vhost-user
-    --disable-virtfs
-    --disable-slirp
     --enable-fdt=internal
     --enable-pixman
-    -Dtools=disabled
     -Doptimization=3
     -Ddebug=false
     -Db_ndebug=false
@@ -570,29 +645,11 @@ buildQemu() {
     -Ddbus_display=disabled
     -Dgzvm=enabled
     -Dlinux_io_uring=enabled
-    -Dmalloc_trim=disabled
+    -Dtools=disabled
     -Dxen=disabled
     -Dxen_pci_passthrough=disabled
     -Dmultiprocess=disabled
     -Dreplication=disabled
-    -Dbochs=disabled
-    -Dcloop=disabled
-    -Ddmg=disabled
-    -Dqcow1=disabled
-    -Dvdi=disabled
-    -Dvhdx=disabled
-    -Dvmdk=disabled
-    -Dvpc=disabled
-    -Dvvfat=disabled
-    -Dqed=disabled
-    -Dparallels=disabled
-    -Dzstd=disabled
-    -Dl2tpv3=disabled
-    -Dattr=disabled
-    -Dxkbcommon=disabled
-    -Dpng=disabled
-    -Dspice=disabled
-    -Dspice_protocol=disabled
     -Dopengl=enabled
   )
   rm -rf "$qemuBuild"
@@ -637,6 +694,7 @@ buildGlib
 buildPixman
 buildLibucontext
 buildLiburing
+installTermuxDeps
 preparePkgConfig
 buildEpoxy
 buildVirglrenderer
