@@ -1,0 +1,117 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Create a GitHub release'
+        type: boolean
+        default: false
+      version:
+        description: 'Release tag for manual release (e.g. v26.8.1)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK_VERSION: r30-beta2
+  NDK_URL: https://dl.google.com/android/repository/android-ndk-r30-beta2-linux.zip
+  MESON_VERSION: '1.5.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo apt-get clean
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential make cmake ninja-build patchelf pkg-config zstd \
+            perl python3 python3-pip python3-venv bzip2 xz-utils unzip \
+            git curl
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/pip" install "meson==${MESON_VERSION}"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Download Android NDK
+        run: |
+          curl -L --fail --retry 3 -o "$RUNNER_TEMP/ndk.zip" "$NDK_URL"
+          unzip -q "$RUNNER_TEMP/ndk.zip" -d "$HOME"
+          test -x "$HOME/android-ndk-${NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+
+      - name: Prepare meson wheel
+        run: |
+          mkdir -p python/wheels
+          "$RUNNER_TEMP/venv/bin/pip" download --no-deps \
+            --dest python/wheels "meson==${MESON_VERSION}"
+
+      - name: Prepare ALS dir
+        run: mkdir -p "$RUNNER_TEMP/als/app/src/main"
+
+      - name: Build
+        run: |
+          ANDROID_NDK_ROOT="$HOME/android-ndk-${NDK_VERSION}" \
+          alsDir="$RUNNER_TEMP/als" \
+          ./build.sh
+
+      - name: Package
+        id: package
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "${INPUT_VERSION}" ]]; then
+            VERSION="${INPUT_VERSION}"
+          else
+            VERSION="$(cat VERSION)-$(date -u +%Y%m%d)-${GITHUB_SHA::7}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          mkdir -p dist
+          tar -C build/out -czf "dist/qemu-gzvm-${VERSION}-aarch64.tar.gz" qemu-gzvm
+          tar -C "$RUNNER_TEMP/als/app/src/main/jniLibs" \
+            -czf "dist/jniLibs-${VERSION}-arm64-v8a.tar.gz" arm64-v8a
+          ls -lh dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-gzvm-${{ steps.package.outputs.version }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release == 'true')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+          else
+            gh release create "$VERSION" dist/* --title "$VERSION" --generate-notes
+          fi
