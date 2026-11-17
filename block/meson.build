@@ -1,11 +1,22 @@
 block_ss.add(genh)
 block_ss.add(files(
   'accounting.c',
+  'aio_task.c',
   'block-backend.c',
+  'crypto.c',
+  'dirty-bitmap.c',
   'graph-lock.c',
   'io.c',
+  'qcow2.c',
+  'qcow2-bitmap.c',
+  'qcow2-cache.c',
+  'qcow2-cluster.c',
+  'qcow2-refcount.c',
+  'qcow2-snapshot.c',
+  'qcow2-threads.c',
   'raw-format.c',
-))
+  'snapshot.c',
+), zstd, zlib)
 
 system_ss.add(files('block-ram-registrar.c'))
 

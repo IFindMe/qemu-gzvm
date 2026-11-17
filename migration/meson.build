@@ -1,4 +1,5 @@
 migration_files = files(
+  'blocker.c',
   'vmstate-types.c',
   'vmstate.c',
   'qemu-file.c',

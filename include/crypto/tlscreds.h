@@ -26,4 +26,7 @@ bool qcrypto_tls_creds_check_endpoint(QCryptoTLSCreds *creds,
                                       QCryptoTLSCredsEndpoint endpoint,
                                       Error **errp);
 
+bool qcrypto_tls_creds_reload(QCryptoTLSCreds *creds,
+                              Error **errp);
+
 #endif /* QCRYPTO_TLSCREDS_H */

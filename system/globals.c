@@ -22,6 +22,7 @@ bool enable_cpu_pm;
 int autostart = 1;
 Chardev *parallel_hds[MAX_PARALLEL_PORTS];
 const char *qemu_name;
+const char *keyboard_layout;
 unsigned int nb_prom_envs;
 const char *prom_envs[MAX_PROM_ENVS];
 uint8_t *boot_splash_filedata;

@@ -530,7 +530,7 @@ void main_loop_wait(int nonblocking)
 
 
 QEMUBH *qemu_bh_new_full(QEMUBHFunc *cb, void *opaque, const char *name,
-                         MemReentrancyGuard *reentrancy_guard)
+                         struct MemReentrancyGuard *reentrancy_guard)
 {
     return aio_bh_new_full(qemu_aio_context, cb, opaque, name,
                            reentrancy_guard);

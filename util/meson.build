@@ -1,4 +1,5 @@
 util_ss.add(files('osdep.c', 'cutils.c', 'unicode.c', 'qemu-timer-common.c'))
+util_ss.add(files('qht.c'))
 util_ss.add(files('thread-context.c'), numa)
 if not config_host_data.get('CONFIG_ATOMIC64')
   error('atomic64 fallback was removed from this trimmed build')
@@ -53,10 +54,13 @@ if have_block or have_ga or have_user
 endif
 if have_block
   util_ss.add(files('aio-wait.c'))
+  util_ss.add(files('buffer.c'))
   util_ss.add(files('bufferiszero.c'))
+  util_ss.add(files('hbitmap.c'))
   util_ss.add(files('iov.c'))
   util_ss.add(files('block-helpers.c'))
   util_ss.add(files('qemu-coroutine-sleep.c'))
   util_ss.add(files('readline.c'))
+  util_ss.add(files('throttle.c'))
   util_ss.add(files('timed-average.c'))
 endif

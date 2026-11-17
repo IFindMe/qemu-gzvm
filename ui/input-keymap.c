@@ -22,6 +22,11 @@ int qemu_input_key_number_to_qcode(unsigned int nr)
     return qemu_input_map_qnum_to_qcode[nr];
 }
 
+unsigned int qemu_input_key_number_to_linux(unsigned int nr)
+{
+    return qemu_input_map_qcode_to_linux[qemu_input_key_number_to_qcode(nr)];
+}
+
 int qemu_input_key_value_to_qcode(const KeyValue *value)
 {
     if (value->type == KEY_VALUE_KIND_QCODE) {

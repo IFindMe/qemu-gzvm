@@ -11,6 +11,7 @@
 { 'include': 'block.json' }
 { 'include': 'char.json' }
 { 'include': 'net.json' }
+{ 'include': 'authz.json' }
 { 'include': 'ui.json' }
 { 'include': 'trace.json' }
 { 'include': 'compat.json' }

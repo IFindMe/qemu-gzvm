@@ -1347,6 +1347,14 @@ DEFHEADING()
 
 DEFHEADING(Display options:)
 
+DEF("k", HAS_ARG, QEMU_OPTION_k,
+    "-k language     use keyboard layout (for example 'fr' for French)\n",
+    QEMU_ARCH_ALL)
+SRST
+``-k language``
+    Use keyboard layout language (for example ``fr`` for French).
+ERST
+
 DEF("display", HAS_ARG, QEMU_OPTION_display,
 #if defined(CONFIG_AGL)
     "-display agl\n"
@@ -1375,6 +1383,61 @@ SRST
         that it only affects what is done with video output; -nographic
         also changes the destination of the serial and parallel port
         data.
+ERST
+
+#ifdef CONFIG_VNC
+DEF("vnc", HAS_ARG, QEMU_OPTION_vnc ,
+    "-vnc <display>  shorthand for -display vnc=<display>\n", QEMU_ARCH_ALL)
+#endif
+SRST
+``-vnc display[,option[,option[,...]]]``
+    Listen for VNC connections on the given display and redirect the
+    graphical console over VNC. By convention the TCP port is 5900+d
+    for display ``d``. Valid syntax for the display is
+
+    ``to=L``
+        Try the next available VNC display until display ``L`` if the
+        requested one is already in use.
+
+    ``host:d``
+        Only allow TCP connections from ``host`` on display ``d``. If
+        ``host`` is omitted, accept connections from any host.
+
+    ``unix:path``
+        Allow connections over the UNIX domain socket at ``path``.
+
+    ``none``
+        Initialize VNC but do not start listening.
+
+    Following the display value there may be one or more option flags
+    separated by commas. Valid options include
+
+    ``reverse=on|off``
+        Connect to a listening VNC client via a reverse connection.
+
+    ``websocket=on|off``
+        Open an additional TCP listening port dedicated to VNC
+        websocket connections.
+
+    ``password=on|off``
+        Require password based authentication. The password is set with
+        the ``set_password`` monitor command.
+
+    ``tls-creds=ID``
+        Use the TLS credentials object ``ID`` to secure the VNC server
+        and enable VeNCrypt authentication.
+
+    ``sasl=on|off``
+        Use SASL authentication.
+
+    ``display=ID``
+        Select the graphical console to export.
+
+    ``head=N``
+        Select which head of the graphical console to export.
+
+    ``audiodev=ID``
+        Select the audio backend to use.
 ERST
 
 DEF("nographic", 0, QEMU_OPTION_nographic,
@@ -1997,6 +2060,43 @@ The available backends are:
     Connect to a spice port, allowing a Spice client to handle the
     traffic identified by a name (preferably a fqdn).
 ERST
+
+#ifdef CONFIG_VIRTFS
+DEF("fsdev", HAS_ARG, QEMU_OPTION_fsdev,
+    "-fsdev local,id=id,path=path,security_model=mapped-xattr|mapped-file|passthrough|none\n"
+    " [,writeout=immediate][,readonly=on][,fmode=fmode][,dmode=dmode]\n"
+    " [[,throttling.bps-total=b]|[[,throttling.bps-read=r][,throttling.bps-write=w]]]\n"
+    " [[,throttling.iops-total=i]|[[,throttling.iops-read=r][,throttling.iops-write=w]]]\n"
+    "-fsdev synth,id=id\n",
+    QEMU_ARCH_ALL)
+
+SRST
+``-fsdev local,id=id,path=path,security_model=security_model [,writeout=writeout][,readonly=on][,fmode=fmode][,dmode=dmode] [,throttling.option=value[,...]]``
+  \
+``-fsdev synth,id=id[,readonly=on]``
+    Define a new file system device backed by a host directory or by a
+    synthetic test filesystem.  A local fsdev is normally attached to a
+    guest with ``-device virtio-9p-pci`` or via the ``-virtfs`` shortcut.
+ERST
+
+DEF("virtfs", HAS_ARG, QEMU_OPTION_virtfs,
+    "-virtfs local,path=path,mount_tag=tag,security_model=mapped-xattr|mapped-file|passthrough|none\n"
+    "        [,id=id][,writeout=immediate][,readonly=on][,fmode=fmode][,dmode=dmode]\n"
+    "        [,multidevs=remap|forbid|warn]\n"
+    "-virtfs synth,mount_tag=tag[,id=id][,readonly=on]\n",
+    QEMU_ARCH_ALL)
+
+SRST
+``-virtfs local,path=path,mount_tag=mount_tag,security_model=security_model[,writeout=writeout][,readonly=on] [,fmode=fmode][,dmode=dmode][,multidevs=multidevs]``
+  \
+``-virtfs synth,mount_tag=mount_tag``
+    Expose a host directory to the guest as a virtio-9p (9pfs) device.
+    This is a shortcut for ``-fsdev`` together with
+    ``-device virtio-9p-pci``.  For a directory-backed guest root
+    filesystem, export the directory with this option and mount the
+    ``mount_tag`` inside the guest as ``9p``.
+ERST
+#endif
 
 DEFHEADING()
 

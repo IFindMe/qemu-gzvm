@@ -137,7 +137,7 @@ installTermuxDeps() {
     libslirp libgnutls libgcrypt zstd libpng
     libgmp libnettle libgpg-error libtasn1
     libidn2 libunbound libunistring p11-kit ca-certificates liblzma
-    libandroid-support libiconv libevent libc++ zlib
+    libandroid-support libiconv libevent libc++ zlib attr
   )
   if [ -f "$prefix/lib/pkgconfig/slirp.pc" ] && [ -f "$prefix/lib/pkgconfig/zlib.pc" ]; then
     return 0
@@ -627,7 +627,7 @@ buildQemu() {
     --disable-tpm
     --disable-libusb
     --disable-usb-redir
-    --disable-virtfs
+    --enable-virtfs
     --disable-vhost-kernel
     --disable-vhost-net
     --disable-vhost-vdpa

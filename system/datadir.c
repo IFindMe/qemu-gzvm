@@ -22,6 +22,12 @@ char *qemu_find_file(int type, const char *name)
     case QEMU_FILE_TYPE_BIOS:
         subdir = "";
         break;
+    case QEMU_FILE_TYPE_DTB:
+        subdir = "dtb/";
+        break;
+    case QEMU_FILE_TYPE_KEYMAP:
+        subdir = "keymaps/";
+        break;
     default:
         abort();
     }

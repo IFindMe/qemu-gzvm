@@ -47,6 +47,7 @@ qapi_all_modules = [
 if have_system
   qapi_all_modules += [
     'audio',
+    'authz',
     'qdev',
   ]
 endif

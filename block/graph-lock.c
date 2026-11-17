@@ -11,6 +11,9 @@ static QemuMutex aio_context_list_lock;
 
 static int has_writer;
 
+/* Number of bdrv_graph_wrlock_drained() sections that are currently held. */
+static int wrlock_quiesced_counter;
+
 static uint32_t orphaned_reader_count;
 
 static CoQueue reader_queue;
@@ -81,6 +84,15 @@ void no_coroutine_fn bdrv_graph_wrlock(void)
     bdrv_drain_all_end();
 }
 
+void no_coroutine_fn bdrv_graph_wrlock_drained(void)
+{
+    GLOBAL_STATE_CODE();
+
+    bdrv_drain_all_begin();
+    wrlock_quiesced_counter++;
+    bdrv_graph_wrlock();
+}
+
 void no_coroutine_fn bdrv_graph_wrunlock(void)
 {
     GLOBAL_STATE_CODE();
@@ -93,6 +105,11 @@ void no_coroutine_fn bdrv_graph_wrunlock(void)
     }
 
     aio_bh_poll(qemu_get_aio_context());
+
+    if (wrlock_quiesced_counter > 0) {
+        bdrv_drain_all_end();
+        wrlock_quiesced_counter--;
+    }
 }
 
 void coroutine_fn bdrv_graph_co_rdlock(void)

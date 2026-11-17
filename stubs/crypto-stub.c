@@ -2,9 +2,12 @@
 #include <sys/random.h>
 #include "qapi/error.h"
 #include "crypto/block.h"
+#include "crypto/cipher.h"
 #include "crypto/hash.h"
 #include "crypto/init.h"
 #include "crypto/random.h"
+#include "crypto/secret_common.h"
+#include "crypto/tlscreds.h"
 #include "crypto/tlssession.h"
 #include "crypto/x509-utils.h"
 int qcrypto_init(Error **errp){return 0;}
@@ -52,3 +55,9 @@ uint64_t qcrypto_block_get_payload_offset(QCryptoBlock*block){return 0;}
 uint64_t qcrypto_block_get_sector_size(QCryptoBlock*block){return 512;}
 void qcrypto_block_free(QCryptoBlock*block){g_free(block);}
 int qcrypto_get_x509_cert_fingerprint(uint8_t*cert,size_t size,QCryptoHashAlgo hash,uint8_t*result,size_t*resultlen,Error**errp){error_setg(errp,"crypto disabled");return -1;}
+bool qcrypto_cipher_supports(QCryptoCipherAlgo alg,QCryptoCipherMode mode){return false;}
+QCryptoCipher*qcrypto_cipher_new(QCryptoCipherAlgo alg,QCryptoCipherMode mode,const uint8_t*key,size_t nkey,Error**errp){error_setg(errp,"crypto disabled");return NULL;}
+void qcrypto_cipher_free(QCryptoCipher*cipher){g_free(cipher);}
+int qcrypto_cipher_encrypt(QCryptoCipher*cipher,const void*in,void*out,size_t len,Error**errp){error_setg(errp,"crypto disabled");return -1;}
+char*qcrypto_secret_lookup_as_utf8(const char*secretid,Error**errp){error_setg(errp,"crypto disabled");return NULL;}
+bool qcrypto_tls_creds_reload(QCryptoTLSCreds*creds,Error**errp){error_setg(errp,"crypto disabled");return false;}

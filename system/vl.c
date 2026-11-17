@@ -80,6 +80,9 @@
 #include "system/iothread.h"
 #include "qemu/guest-random.h"
 #include "qemu/keyval.h"
+#ifdef CONFIG_VIRTFS
+#include "fsdev/qemu-fsdev.h"
+#endif
 
 #define MAX_VIRTIO_CONSOLES 1
 
@@ -729,6 +732,25 @@ static void parse_display(const char *p)
         exit(0);
     }
 
+#ifdef CONFIG_VNC
+    const char *opts;
+
+    if (strstart(p, "vnc", &opts)) {
+        /*
+         * vnc isn't a (local) DisplayType but a protocol for remote
+         * display access.
+         */
+        if (*opts == '=') {
+            vnc_parse(opts + 1);
+            display_remote++;
+        } else {
+            error_report("VNC requires a display argument vnc=<display>");
+            exit(1);
+        }
+        return;
+    }
+#endif
+
     parse_display_qapi(p);
 }
 
@@ -824,6 +846,13 @@ static int chardev_init_func(void *opaque, QemuOpts *opts, Error **errp)
     }
     return 0;
 }
+
+#ifdef CONFIG_VIRTFS
+static int fsdev_init_func(void *opaque, QemuOpts *opts, Error **errp)
+{
+    return qemu_fsdev_add(opts, errp);
+}
+#endif
 
 static int mon_init_func(void *opaque, QemuOpts *opts, Error **errp)
 {
@@ -926,6 +955,10 @@ static void qemu_setup_display(void)
     if (dpy.type == DISPLAY_TYPE_DEFAULT && !display_remote) {
         if (!qemu_display_find_default(&dpy)) {
             dpy.type = DISPLAY_TYPE_NONE;
+#if defined(CONFIG_VNC)
+            vnc_parse("localhost:0,to=99,id=default");
+            display_remote++;
+#endif
         }
     }
     if (dpy.type == DISPLAY_TYPE_DEFAULT) {
@@ -1422,6 +1455,11 @@ static void qemu_create_early_backends(void)
 
     qemu_opts_foreach(qemu_find_opts("chardev"),
                       chardev_init_func, NULL, &error_fatal);
+
+#ifdef CONFIG_VIRTFS
+    qemu_opts_foreach(qemu_find_opts("fsdev"),
+                      fsdev_init_func, NULL, &error_fatal);
+#endif
 
     configure_blockdev(&bdo_queue, machine_class, snapshot);
     audio_init_audiodevs();
@@ -1921,11 +1959,18 @@ static void qemu_init_displays(void)
 {
     DisplayState *ds;
 
+    /* init local displays */
     ds = init_displaystate();
     qemu_display_init(ds, &dpy);
 
+    /* must be after terminal init, SDL library changes signal handlers */
     os_setup_signal_handling();
 
+    /* init remote displays */
+#ifdef CONFIG_VNC
+    qemu_opts_foreach(qemu_find_opts("vnc"),
+                      vnc_init_func, NULL, &error_fatal);
+#endif
 }
 
 static void qemu_init_board(void)
@@ -2139,9 +2184,18 @@ void qemu_init(int argc, char **argv)
                     exit(1);
                 }
                 break;
+            case QEMU_OPTION_k:
+                keyboard_layout = optarg;
+                break;
             case QEMU_OPTION_display:
                 parse_display(optarg);
                 break;
+#ifdef CONFIG_VNC
+            case QEMU_OPTION_vnc:
+                vnc_parse(optarg);
+                display_remote++;
+                break;
+#endif
             case QEMU_OPTION_nographic:
                 qdict_put_str(machine_opts_dict, "graphics", "off");
                 nographic = true;
@@ -2318,6 +2372,96 @@ void qemu_init(int argc, char **argv)
                     exit(1);
                 }
                 break;
+#ifdef CONFIG_VIRTFS
+            case QEMU_OPTION_fsdev:
+                olist = qemu_find_opts("fsdev");
+                if (!olist) {
+                    error_report("fsdev support is disabled");
+                    exit(1);
+                }
+                opts = qemu_opts_parse_noisily(olist, optarg, true);
+                if (!opts) {
+                    exit(1);
+                }
+                break;
+            case QEMU_OPTION_virtfs: {
+                QemuOpts *fsdev;
+                QemuOpts *device;
+                const char *writeout, *sock_fd, *socket, *path, *security_model,
+                           *multidevs;
+
+                olist = qemu_find_opts("virtfs");
+                if (!olist) {
+                    error_report("virtfs support is disabled");
+                    exit(1);
+                }
+                opts = qemu_opts_parse_noisily(olist, optarg, true);
+                if (!opts) {
+                    exit(1);
+                }
+
+                if (qemu_opt_get(opts, "fsdriver") == NULL ||
+                    qemu_opt_get(opts, "mount_tag") == NULL) {
+                    error_report("Usage: -virtfs fsdriver,mount_tag=tag");
+                    exit(1);
+                }
+                fsdev = qemu_opts_create(qemu_find_opts("fsdev"),
+                                         qemu_opts_id(opts) ?:
+                                         qemu_opt_get(opts, "mount_tag"),
+                                         1, NULL);
+                if (!fsdev) {
+                    error_report("duplicate or invalid fsdev id: %s",
+                                 qemu_opt_get(opts, "mount_tag"));
+                    exit(1);
+                }
+
+                writeout = qemu_opt_get(opts, "writeout");
+                if (writeout) {
+#ifdef CONFIG_SYNC_FILE_RANGE
+                    qemu_opt_set(fsdev, "writeout", writeout, &error_abort);
+#else
+                    error_report("writeout=immediate not supported "
+                                 "on this platform");
+                    exit(1);
+#endif
+                }
+                qemu_opt_set(fsdev, "fsdriver",
+                             qemu_opt_get(opts, "fsdriver"), &error_abort);
+                path = qemu_opt_get(opts, "path");
+                if (path) {
+                    qemu_opt_set(fsdev, "path", path, &error_abort);
+                }
+                security_model = qemu_opt_get(opts, "security_model");
+                if (security_model) {
+                    qemu_opt_set(fsdev, "security_model", security_model,
+                                 &error_abort);
+                }
+                socket = qemu_opt_get(opts, "socket");
+                if (socket) {
+                    qemu_opt_set(fsdev, "socket", socket, &error_abort);
+                }
+                sock_fd = qemu_opt_get(opts, "sock_fd");
+                if (sock_fd) {
+                    qemu_opt_set(fsdev, "sock_fd", sock_fd, &error_abort);
+                }
+
+                qemu_opt_set_bool(fsdev, "readonly",
+                                  qemu_opt_get_bool(opts, "readonly", 0),
+                                  &error_abort);
+                multidevs = qemu_opt_get(opts, "multidevs");
+                if (multidevs) {
+                    qemu_opt_set(fsdev, "multidevs", multidevs, &error_abort);
+                }
+                device = qemu_opts_create(qemu_find_opts("device"), NULL, 0,
+                                          &error_abort);
+                qemu_opt_set(device, "driver", "virtio-9p-pci", &error_abort);
+                qemu_opt_set(device, "fsdev",
+                             qemu_opts_id(fsdev), &error_abort);
+                qemu_opt_set(device, "mount_tag",
+                             qemu_opt_get(opts, "mount_tag"), &error_abort);
+                break;
+            }
+#endif
             case QEMU_OPTION_serial:
                 add_device_config(DEV_SERIAL, optarg);
                 default_serial = 0;

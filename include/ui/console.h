@@ -51,6 +51,14 @@ enum qemu_color_names {
 #define ATTR2CHTYPE(c, fg, bg, bold) \
     ((bold) << 21 | (bg) << 11 | (fg) << 8 | (c))
 
+typedef void QEMUPutLEDEvent(void *opaque, int ledstate);
+typedef struct QEMUPutLEDEntry QEMUPutLEDEntry;
+
+QEMUPutLEDEntry *qemu_add_led_event_handler(QEMUPutLEDEvent *func, void *opaque);
+void qemu_remove_led_event_handler(QEMUPutLEDEntry *entry);
+
+void kbd_put_ledstate(int ledstate);
+
 #define QEMU_KEY_ESC1(c) ((c) | 0xe100)
 #define QEMU_KEY_TAB        0x0009
 #define QEMU_KEY_BACKSPACE  0x007f
@@ -391,5 +399,11 @@ void qemu_display_help(void);
 #ifdef CONFIG_LINUX
 int udmabuf_fd(void);
 #endif
+
+/* vnc.c */
+void vnc_parse(const char *str);
+int vnc_init_func(void *opaque, QemuOpts *opts, Error **errp);
+int vnc_display_password(const char *id, const char *password, Error **errp);
+int vnc_display_pw_expire(const char *id, time_t expires);
 
 #endif

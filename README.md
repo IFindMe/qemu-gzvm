@@ -10,11 +10,13 @@ AAudio and a small set of block/network backends.
 - Target: `aarch64-softmmu`, machine `virt`, accelerator `gzvm`
 - CPU: `host` (the only AArch64 CPU model registered by this fork)
 - Virtio: `virtio-blk-pci`, `virtio-net-pci`, `virtio-gpu-gl-pci`,
-  `virtio-keyboard-pci`, `virtio-tablet-pci`, `virtio-snd-pci`
-- Graphics: virglrenderer + OpenGL, AGL display backend (Android surface)
+  `virtio-keyboard-pci`, `virtio-tablet-pci`, `virtio-snd-pci`,
+  `virtio-9p-pci`
+- Graphics: virglrenderer + OpenGL, AGL display backend (Android surface), VNC
 - Audio: AAudio
 - Networking: user-mode NAT (`-netdev user`, slirp) and TAP (`-netdev tap`)
-- Disks: raw images only (`-drive ...,format=raw`)
+- Disks: raw and qcow2 images (`-drive ...,format=raw|qcow2`)
+- Filesystems: 9P/virtfs host directory export (`-fsdev`/`-virtfs`)
 - Libraries: glib, pixman, libffi, pcre2, libucontext, liburing, libepoxy,
   virglrenderer (all built from source by `build.sh`)
 
@@ -23,9 +25,12 @@ AAudio and a small set of block/network backends.
 - User-mode networking supports IPv4/IPv6, DHCP, TFTP, `hostfwd` and
   `guestfwd`. SMB (`smb=`) needs an `smbd` binary on the device and is not
   usable in practice.
-- Only the `raw` block format exists. There is no `qemu-img` and no qcow2/vmdk.
-  Convert images with an external `qemu-img` before use.
-- There is no USB, 9p/virtfs, TPM, vhost, guest agent or loadable modules.
+- There is no `qemu-img` binary in the package. Create or convert qcow2 images
+  with an external `qemu-img` before copying them to the device. The qcow2
+  driver itself is enabled.
+- VNC supports plain connections only; JPEG compression and SASL/TLS are not
+  built.
+- There is no USB, TPM, vhost, guest agent or loadable modules.
 - `/dev/gzvm` and root privileges are required on the device.
 
 ## Requirements
@@ -158,6 +163,60 @@ Notes:
 `-display agl` renders into an Android `Surface` supplied by the host app via
 JNI. For a headless/console guest use `-nographic` instead.
 
+### VNC
+
+Plain VNC is available without an Android surface:
+
+```sh
+./qemu-system-aarch64 \
+  -display vnc=:0 \
+  ...
+```
+
+Then connect to `tcp://<device-ip>:5900`. SASL, TLS and JPEG compression are
+not enabled in this build.
+
+## Disk images
+
+Both raw and qcow2 images can be attached to `virtio-blk-pci`:
+
+```sh
+-drive file=rootfs.img,format=raw,if=virtio
+-drive file=disk.qcow2,format=qcow2,if=virtio
+```
+
+The fork does not ship `qemu-img`; prepare qcow2 images on another machine.
+Backing files and qcow2 compression with zlib/zstd work, but images using
+optional features not compiled into this build may not open.
+
+## Directory-backed root filesystem (9P/virtfs)
+
+A normal host directory can be exported directly to the guest with 9P and used
+as the root filesystem. The guest kernel must have `9p` and `9pnet_virtio`
+built in (or available in an initramfs).
+
+```sh
+./qemu-system-aarch64 \
+  -L fw \
+  -M virt -accel gzvm -cpu host \
+  -smp 4 -m 2048 \
+  -kernel Image \
+  -append "console=ttyAMA0 root=/dev/root rootfstype=9p rootflags=trans=virtio,version=9p2000.L,rw" \
+  -virtfs local,path=/data/local/tmp/rootfs,mount_tag=rootfs,security_model=none,id=rootfs \
+  -nographic
+```
+
+`-virtfs` is a shortcut for `-fsdev` plus `-device virtio-9p-pci`. The
+equivalent explicit form is:
+
+```sh
+-fsdev local,id=rootfs,path=/data/local/tmp/rootfs,security_model=none \
+-device virtio-9p-pci,fsdev=rootfs,mount_tag=rootfs
+```
+
+Use `security_model=none` for a plain shared directory. Add `readonly=on` to
+export it read-only.
+
 ## Networking
 
 ### User-mode NAT (no host setup)
@@ -241,7 +300,8 @@ VMNative.run("/data/local/tmp/qemu-gzvm", argv, -1)
 
 `workDir` is the current directory used for relative paths. `audioFd` is the
 AAudio input file descriptor, or `-1` when unused. For a console-only guest,
-replace `-display agl` with `-nographic`.
+replace `-display agl` with `-nographic`. You can also add `-virtfs` or a
+`format=qcow2` drive to `argv` exactly as in the command-line examples above.
 
 ## Troubleshooting
 
@@ -249,7 +309,9 @@ replace `-display agl` with `-nographic`.
   accessible; run as root.
 - `Could not configure /dev/net/tun` → TAP needs root and kernel TUN/TAP
   support; use `-netdev user` instead if you only need outbound access.
-- `Could not open '...qcow2'` → only raw images are supported.
+- `Could not open '...qcow2'` → check that `format=qcow2` is passed explicitly
+  and that the image was created with a compatible qcow2 version. Unlike raw
+  images, qcow2 files are not auto-detected when opened through `-drive`.
 - `error while loading shared libraries` → keep the `lib/` directory next to the
   binaries (the `$ORIGIN/lib` RPATH expects it).
 - `Unable to find CPU model ...` → this fork only provides `-cpu host`.

@@ -3,15 +3,35 @@ specific_ss.add(when: ['CONFIG_SYSTEM_ONLY'], if_true: pixman)   # for the inclu
 
 system_ss.add(png)
 system_ss.add(files(
+  'clipboard.c',
   'console.c',
   'cursor.c',
   'dmabuf.c',
   'input-keymap.c',
   'input.c',
   'kbd-state.c',
+  'keymaps.c',
   'qemu-pixman.c',
 ))
 system_ss.add(files('console-vc-stubs.c'))
+
+vnc_ss = ss.source_set()
+vnc_ss.add(files(
+  'vnc.c',
+  'vnc-enc-zlib.c',
+  'vnc-enc-hextile.c',
+  'vnc-enc-tight.c',
+  'vnc-palette.c',
+  'vnc-enc-zrle.c',
+  'vnc-auth-vencrypt.c',
+  'vnc-ws.c',
+  'vnc-jobs.c',
+  'vnc-clipboard.c',
+))
+vnc_ss.add(zlib, jpeg, png)
+vnc_ss.add(when: sasl, if_true: files('vnc-auth-sasl.c'))
+system_ss.add_all(when: [vnc, pixman], if_true: vnc_ss)
+system_ss.add(when: vnc, if_true: files('vnc-system.c'), if_false: files('vnc-stubs.c'))
 if is_android
   system_ss.add(opengl, android_native_window, files(
     'agl.c',

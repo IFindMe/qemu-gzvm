@@ -116,6 +116,13 @@ bdrv_primary_bs(BlockDriverState *bs)
     return child_bs(bdrv_primary_child(bs));
 }
 
+void bdrv_set_dirty(BlockDriverState *bs, int64_t offset, int64_t bytes);
+
+void bdrv_clear_dirty_bitmap(BdrvDirtyBitmap *bitmap, HBitmap **out);
+void bdrv_dirty_bitmap_merge_internal(BdrvDirtyBitmap *dest,
+                                      const BdrvDirtyBitmap *src,
+                                      HBitmap **backup, bool lock);
+
 bool bdrv_bsc_is_data(BlockDriverState *bs, int64_t offset, int64_t *pnum);
 
 void bdrv_bsc_invalidate_range(BlockDriverState *bs,

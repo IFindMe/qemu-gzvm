@@ -23,6 +23,13 @@ void unregister_aiocontext(AioContext *ctx);
 void no_coroutine_fn TSA_ACQUIRE(graph_lock) TSA_NO_TSA
 bdrv_graph_wrlock(void);
 
+/*
+ * Like bdrv_graph_wrlock(), but starts a drained section before locking.
+ * bdrv_graph_wrunlock() ends it again.
+ */
+void no_coroutine_fn TSA_ACQUIRE(graph_lock) TSA_NO_TSA
+bdrv_graph_wrlock_drained(void);
+
 void no_coroutine_fn TSA_RELEASE(graph_lock) TSA_NO_TSA
 bdrv_graph_wrunlock(void);
 

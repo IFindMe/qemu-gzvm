@@ -44,6 +44,8 @@ bool is_mlock_on_fault(MlockState);
 
 extern MlockState mlock_state;
 
+extern const char *keyboard_layout;
+
 #define MAX_PROM_ENVS 128
 extern const char *prom_envs[MAX_PROM_ENVS];
 extern unsigned int nb_prom_envs;

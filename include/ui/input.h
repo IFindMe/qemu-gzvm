@@ -47,6 +47,7 @@ void qemu_input_event_send_key_qcode(QemuConsole *src, QKeyCode q, bool down);
 void qemu_input_event_send_key_delay(uint32_t delay_ms);
 int qemu_input_linux_to_qcode(unsigned int code);
 int qemu_input_key_number_to_qcode(unsigned int nr);
+unsigned int qemu_input_key_number_to_linux(unsigned int nr);
 int qemu_input_key_value_to_qcode(const KeyValue *value);
 
 void qemu_input_queue_btn(QemuConsole *src, InputButton btn, bool down);

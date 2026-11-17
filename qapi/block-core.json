@@ -5,6 +5,63 @@
 { 'include': 'job.json' }
 { 'include': 'sockets.json' }
 
+{ 'struct': 'ThrottleLimits',
+  'data': { '*iops-total' : 'int', '*iops-total-max' : 'int',
+            '*iops-total-max-length' : 'int', '*iops-read' : 'int',
+            '*iops-read-max' : 'int', '*iops-read-max-length' : 'int',
+            '*iops-write' : 'int', '*iops-write-max' : 'int',
+            '*iops-write-max-length' : 'int', '*bps-total' : 'int',
+            '*bps-total-max' : 'int', '*bps-total-max-length' : 'int',
+            '*bps-read' : 'int', '*bps-read-max' : 'int',
+            '*bps-read-max-length' : 'int', '*bps-write' : 'int',
+            '*bps-write-max' : 'int', '*bps-write-max-length' : 'int',
+            '*iops-size' : 'int' } }
+
+{ 'struct': 'BlockDirtyInfo',
+  'data': {'*name': 'str', 'count': 'int', 'granularity': 'uint32',
+           'recording': 'bool', 'busy': 'bool',
+           'persistent': 'bool', '*inconsistent': 'bool' } }
+
+# Referencing the list here makes QAPI generate BlockDirtyInfoList, which
+# dirty-bitmap.c uses internally.
+{ 'struct': 'BlockDirtyInfoListWrapper',
+  'data': {'bitmaps': ['BlockDirtyInfo'] } }
+
+{ 'enum': 'Qcow2CompressionType',
+  'data': [ 'zlib', { 'name': 'zstd', 'if': 'CONFIG_ZSTD' } ] }
+
+{ 'enum': 'Qcow2BitmapInfoFlags',
+  'data': ['in-use', 'auto'] }
+
+{ 'struct': 'Qcow2BitmapInfo',
+  'data': {'name': 'str', 'granularity': 'uint32',
+           'flags': ['Qcow2BitmapInfoFlags'] } }
+
+{ 'enum': 'BlockdevQcow2EncryptionFormat',
+  'data': [ 'aes', 'luks' ] }
+
+{ 'struct': 'ImageInfoSpecificQCow2EncryptionBase',
+  'data': { 'format': 'BlockdevQcow2EncryptionFormat'}}
+
+{ 'union': 'ImageInfoSpecificQCow2Encryption',
+  'base': 'ImageInfoSpecificQCow2EncryptionBase',
+  'discriminator': 'format',
+  'data': { 'luks': 'QCryptoBlockInfoLUKS' } }
+
+{ 'struct': 'ImageInfoSpecificQCow2',
+  'data': {
+      'compat': 'str',
+      '*data-file': 'str',
+      '*data-file-raw': 'bool',
+      '*extended-l2': 'bool',
+      '*lazy-refcounts': 'bool',
+      '*corrupt': 'bool',
+      'refcount-bits': 'int',
+      '*encrypt': 'ImageInfoSpecificQCow2Encryption',
+      '*bitmaps': ['Qcow2BitmapInfo'],
+      'compression-type': 'Qcow2CompressionType'
+  } }
+
 { 'struct': 'ImageInfoSpecificVmdk',
   'data': {
       'create-type': 'str',
@@ -33,7 +90,10 @@
   } }
 
 { 'enum': 'ImageInfoSpecificKind',
-  'data': [ 'vmdk', 'luks', 'rbd', 'file' ] }
+  'data': [ 'qcow2', 'vmdk', 'luks', 'rbd', 'file' ] }
+
+{ 'struct': 'ImageInfoSpecificQCow2Wrapper',
+  'data': { 'data': 'ImageInfoSpecificQCow2' } }
 
 { 'struct': 'ImageInfoSpecificVmdkWrapper',
   'data': { 'data': 'ImageInfoSpecificVmdk' } }
@@ -51,6 +111,7 @@
   'base': { 'type': 'ImageInfoSpecificKind' },
   'discriminator': 'type',
   'data': {
+      'qcow2': 'ImageInfoSpecificQCow2Wrapper',
       'vmdk': 'ImageInfoSpecificVmdkWrapper',
       'luks': 'ImageInfoSpecificLUKSWrapper',
       'rbd': 'ImageInfoSpecificRbdWrapper',
@@ -226,7 +287,7 @@
             { 'name': 'io_uring', 'if': 'CONFIG_BLKIO' },
             'luks', 'nfs', 'null-aio', 'null-co', 'nvme',
             { 'name': 'nvme-io_uring', 'if': 'CONFIG_BLKIO' },
-            'parallels', 'preallocate', 'qcow', 'qed', 'quorum',
+            'parallels', 'preallocate', 'qcow', 'qcow2', 'qed', 'quorum',
             'raw', 'rbd',
             { 'name': 'replication', 'if': 'CONFIG_REPLICATION' },
             'ssh', 'vdi', 'vhdx',
@@ -278,6 +339,47 @@
 { 'struct': 'BlockdevOptionsQcow',
   'base': 'BlockdevOptionsGenericCOWFormat',
   'data': { '*encrypt': 'BlockdevQcowEncryption' } }
+
+{ 'enum': 'Qcow2OverlapCheckMode',
+  'data': [ 'none', 'constant', 'cached', 'all' ] }
+
+{ 'struct': 'Qcow2OverlapCheckFlags',
+  'data': { '*template':         'Qcow2OverlapCheckMode',
+            '*main-header':      'bool',
+            '*active-l1':        'bool',
+            '*active-l2':        'bool',
+            '*refcount-table':   'bool',
+            '*refcount-block':   'bool',
+            '*snapshot-table':   'bool',
+            '*inactive-l1':      'bool',
+            '*inactive-l2':      'bool',
+            '*bitmap-directory': 'bool' } }
+
+{ 'alternate': 'Qcow2OverlapChecks',
+  'data': { 'flags': 'Qcow2OverlapCheckFlags',
+            'mode':  'Qcow2OverlapCheckMode' } }
+
+{ 'union': 'BlockdevQcow2Encryption',
+  'base': { 'format': 'BlockdevQcow2EncryptionFormat' },
+  'discriminator': 'format',
+  'data': { 'aes': 'QCryptoBlockOptionsQCow',
+            'luks': 'QCryptoBlockOptionsLUKS'} }
+
+{ 'struct': 'BlockdevOptionsQcow2',
+  'base': 'BlockdevOptionsGenericCOWFormat',
+  'data': { '*lazy-refcounts': 'bool',
+            '*pass-discard-request': 'bool',
+            '*pass-discard-snapshot': 'bool',
+            '*pass-discard-other': 'bool',
+            '*discard-no-unref': 'bool',
+            '*overlap-check': 'Qcow2OverlapChecks',
+            '*cache-size': 'int',
+            '*l2-cache-size': 'int',
+            '*l2-cache-entry-size': 'int',
+            '*refcount-cache-size': 'int',
+            '*cache-clean-interval': 'int',
+            '*encrypt': 'BlockdevQcow2Encryption',
+            '*data-file': 'BlockdevRef' } }
 
 { 'struct': 'BlockdevOptionsPreallocate',
   'base': 'BlockdevOptionsGenericFormat',
@@ -573,6 +675,7 @@
       'parallels':  'BlockdevOptionsGenericFormat',
       'preallocate':'BlockdevOptionsPreallocate',
       'qcow':       'BlockdevOptionsQcow',
+      'qcow2':      'BlockdevOptionsQcow2',
       'qed':        'BlockdevOptionsGenericCOWFormat',
       'quorum':     'BlockdevOptionsQuorum',
       'raw':        'BlockdevOptionsRaw',
@@ -701,6 +804,25 @@
             '*subformat':           'BlockdevVpcSubformat',
             '*force-size':          'bool' } }
 
+{ 'enum': 'BlockdevQcow2Version',
+  'data': [ 'v2', 'v3' ] }
+
+{ 'struct': 'BlockdevCreateOptionsQcow2',
+  'data': { 'file':             'BlockdevRef',
+            '*data-file':       'BlockdevRef',
+            '*data-file-raw':   'bool',
+            '*extended-l2':     'bool',
+            'size':             'size',
+            '*version':         'BlockdevQcow2Version',
+            '*backing-file':    'str',
+            '*backing-fmt':     'BlockdevDriver',
+            '*encrypt':         'QCryptoBlockCreateOptions',
+            '*cluster-size':    'size',
+            '*preallocation':   'PreallocMode',
+            '*lazy-refcounts':  'bool',
+            '*refcount-bits':   'int',
+            '*compression-type':'Qcow2CompressionType' } }
+
 { 'union': 'BlockdevCreateOptions',
   'base': {
       'driver':         'BlockdevDriver' },
@@ -712,6 +834,7 @@
       'nfs':            'BlockdevCreateOptionsNfs',
       'parallels':      'BlockdevCreateOptionsParallels',
       'qcow':           'BlockdevCreateOptionsQcow',
+      'qcow2':          'BlockdevCreateOptionsQcow2',
       'qed':            'BlockdevCreateOptionsQed',
       'rbd':            'BlockdevCreateOptionsRbd',
       'ssh':            'BlockdevCreateOptionsSsh',
@@ -726,12 +849,16 @@
   'data': { }
 }
 
+{ 'struct': 'BlockdevAmendOptionsQcow2',
+  'data': { '*encrypt': 'QCryptoBlockAmendOptions' } }
+
 { 'union': 'BlockdevAmendOptions',
   'base': {
       'driver':         'BlockdevDriver' },
   'discriminator': 'driver',
   'data': {
-      'luks':           'BlockdevAmendOptionsLUKS' } }
+      'luks':           'BlockdevAmendOptionsLUKS',
+      'qcow2':          'BlockdevAmendOptionsQcow2' } }
 
 { 'enum': 'BlockErrorAction',
   'data': [ 'ignore', 'report', 'stop' ] }

@@ -8,6 +8,7 @@
 #include "qemu/iov.h"
 #include "qemu/rcu.h"
 #include "qemu/stats64.h"
+#include "qemu/thread.h"
 
 #define BLOCK_FLAG_LAZY_REFCOUNTS   8
 
@@ -32,6 +33,7 @@
 #define BLOCK_OPT_REFCOUNT_BITS     "refcount_bits"
 #define BLOCK_OPT_DATA_FILE         "data_file"
 #define BLOCK_OPT_DATA_FILE_RAW     "data_file_raw"
+#define BLOCK_OPT_KEEP_DATA_FILE    "keep_data_file"
 #define BLOCK_OPT_COMPRESSION_TYPE  "compression_type"
 #define BLOCK_OPT_EXTL2             "extended_l2"
 
@@ -368,6 +370,14 @@ struct BlockDriver {
     void coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_debug_event)(
         BlockDriverState *bs, BlkdebugEvent event);
 
+    bool (*bdrv_supports_persistent_dirty_bitmap)(BlockDriverState *bs);
+
+    bool coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_can_store_new_dirty_bitmap)(
+        BlockDriverState *bs, const char *name, uint32_t granularity,
+        Error **errp);
+
+    int coroutine_fn GRAPH_RDLOCK_PTR (*bdrv_co_remove_persistent_dirty_bitmap)(
+        BlockDriverState *bs, const char *name, Error **errp);
 };
 
 static inline bool TSA_NO_TSA block_driver_can_compress(BlockDriver *drv)
@@ -525,6 +535,15 @@ struct BlockDriverState {
 
     BlockLimits bl;
 
+    /*
+     * Writing to the list requires the BQL _and_ the dirty_bitmap_mutex.
+     * Reading from the list can be done with either the BQL or the
+     * dirty_bitmap_mutex.  Modifying a bitmap only requires
+     * dirty_bitmap_mutex.
+     */
+    QemuMutex dirty_bitmap_mutex;
+    QLIST_HEAD(, BdrvDirtyBitmap) dirty_bitmaps;
+
     BdrvRequestFlags supported_read_flags;
     BdrvRequestFlags supported_write_flags;
     BdrvRequestFlags supported_zero_flags;
@@ -598,6 +617,7 @@ typedef enum BlockMirrorBackingMode {
 
 extern BlockDriver bdrv_file;
 extern BlockDriver bdrv_raw;
+extern BlockDriver bdrv_qcow2;
 
 extern unsigned int bdrv_drain_all_count;
 extern QemuOptsList bdrv_create_opts_simple;

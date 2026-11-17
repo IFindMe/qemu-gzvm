@@ -338,6 +338,8 @@ BlockDriverState *bdrv_new(void)
         QLIST_INIT(&bs->op_blockers[i]);
     }
     qemu_mutex_init(&bs->reqs_lock);
+    qemu_mutex_init(&bs->dirty_bitmap_mutex);
+    QLIST_INIT(&bs->dirty_bitmaps);
     bs->refcnt = 1;
     bs->aio_context = qemu_get_aio_context();
 
@@ -591,7 +593,7 @@ out:
 }
 
 int coroutine_fn bdrv_co_create_file(const char *filename, QemuOpts *opts,
-                                     Error **errp)
+                                     bool allow_protocol_prefix, Error **errp)
 {
     QemuOpts *protocol_opts;
     BlockDriver *drv;
@@ -600,7 +602,7 @@ int coroutine_fn bdrv_co_create_file(const char *filename, QemuOpts *opts,
 
     GLOBAL_STATE_CODE();
 
-    drv = bdrv_find_protocol(filename, true, errp);
+    drv = bdrv_find_protocol(filename, allow_protocol_prefix, errp);
     if (drv == NULL) {
         return -ENOENT;
     }

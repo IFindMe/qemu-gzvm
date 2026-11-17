@@ -1443,6 +1443,24 @@ if get_option('png').allowed() and have_system
    png = dependency('libpng', version: '>=1.6.34', required: get_option('png'),
                     method: 'pkg-config')
 endif
+vnc = not_found
+jpeg = not_found
+sasl = not_found
+if get_option('vnc') \
+             .disable_auto_if(not have_system) \
+             .require(pixman.found(),
+                      error_message: 'cannot enable VNC if pixman is not available') \
+             .allowed()
+  vnc = declare_dependency() # dummy dependency
+  jpeg = dependency('libjpeg', required: get_option('vnc_jpeg'),
+                    method: 'pkg-config')
+  sasl = cc.find_library('sasl2', has_headers: ['sasl/sasl.h'],
+                         required: get_option('vnc_sasl'))
+  if sasl.found()
+    sasl = declare_dependency(dependencies: sasl,
+                              compile_args: '-DSTRUCT_IOVEC_DEFINED')
+  endif
+endif
 snappy = not_found
 if not get_option('snappy').auto() or have_system
   snappy = cc.find_library('snappy', has_headers: ['snappy-c.h'],
@@ -1845,6 +1863,9 @@ config_host_data.set('CONFIG_VHOST_VDPA', have_vhost_vdpa)
 config_host_data.set('CONFIG_VMNET', vmnet.found())
 config_host_data.set('CONFIG_VHOST_USER_BLK_SERVER', have_vhost_user_blk_server)
 config_host_data.set('CONFIG_PNG', png.found())
+config_host_data.set('CONFIG_VNC', vnc.found())
+config_host_data.set('CONFIG_VNC_JPEG', jpeg.found())
+config_host_data.set('CONFIG_VNC_SASL', sasl.found())
 config_host_data.set('CONFIG_VIRTFS', have_virtfs)
 config_host_data.set('CONFIG_XKBCOMMON', xkbcommon.found())
 config_host_data.set('CONFIG_KEYUTILS', keyutils.found())
@@ -2698,11 +2719,13 @@ if have_block
 endif
 if have_system
   trace_events_subdirs += [
+    'authz',
     'audio',
     'hw/audio',
     'hw/block',
     'hw/char',
     'hw/display',
+    'hw/9pfs',
     'hw/input',
     'hw/intc',
     'hw/net',
@@ -2724,6 +2747,7 @@ if have_system or have_user
 endif
 
 
+authz_ss = ss.source_set()
 blockdev_ss = ss.source_set()
 block_ss = ss.source_set()
 chardev_ss = ss.source_set()
@@ -2755,6 +2779,8 @@ subdir('trace')
 subdir('util')
 subdir('qom')
 subdir('ui')
+subdir('authz')
+subdir('fsdev')
 if have_system
   subdir('hw')
 else
@@ -2951,6 +2977,13 @@ libio = static_library('io', io_ss.sources() + genh,
 io = declare_dependency(objects: libio.extract_all_objects(recursive: false),
                         dependencies: [io_ss.dependencies(), qom])
 
+authz_ss = authz_ss.apply({})
+libauthz = static_library('authz', authz_ss.sources() + genh,
+                          dependencies: [authz_ss.dependencies()],
+                          build_by_default: false)
+authz = declare_dependency(objects: libauthz.extract_all_objects(recursive: false),
+                           dependencies: [authz_ss.dependencies(), qom])
+
 libmigration = static_library('migration', sources: migration_files + genh,
                               build_by_default: false)
 migration = declare_dependency(objects: libmigration.extract_all_objects(recursive: false),
@@ -2995,7 +3028,7 @@ hwcore = declare_dependency(objects: libhwcore.extract_all_objects(recursive: fa
 common_ss.add(hwcore)
 
 
-system_ss.add(blockdev, chardev, io, qmp)
+system_ss.add(authz, blockdev, chardev, io, qmp)
 common_ss.add(qom, qemuutil)
 
 common_ss.add_all(when: 'CONFIG_SYSTEM_ONLY', if_true: [system_ss])
@@ -3453,6 +3486,11 @@ endif
 summary_info += {'AGL support':       is_android}
 summary_info += {'pixman':            pixman}
 summary_info += {'PNG support':       png}
+summary_info += {'VNC support':       vnc}
+if vnc.found()
+  summary_info += {'VNC SASL support':  sasl}
+  summary_info += {'VNC JPEG support':  jpeg}
+endif
 summary_info += {'spice protocol support': spice_protocol}
 if spice_protocol.found()
   summary_info += {'  spice server support': spice}

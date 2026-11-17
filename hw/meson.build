@@ -1,3 +1,4 @@
+subdir('9pfs')
 subdir('audio')
 subdir('block')
 subdir('char')

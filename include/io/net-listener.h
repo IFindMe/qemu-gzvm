@@ -64,4 +64,11 @@ void qio_net_listener_disconnect(QIONetListener *listener);
 
 bool qio_net_listener_is_connected(QIONetListener *listener);
 
+size_t qio_net_listener_nsioc(QIONetListener *listener);
+
+QIOChannelSocket *qio_net_listener_sioc(QIONetListener *listener, size_t n);
+
+SocketAddress *qio_net_listener_get_local_address(QIONetListener *listener,
+                                                  size_t n, Error **errp);
+
 #endif /* QIO_NET_LISTENER_H */
