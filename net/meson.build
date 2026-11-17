@@ -8,3 +8,5 @@ system_ss.add(files(
 ))
 
 system_ss.add(files('tap.c'))
+
+system_ss.add(when: slirp, if_true: files('slirp.c'))

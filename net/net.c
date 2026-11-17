@@ -1080,11 +1080,21 @@ void qemu_create_nic_bus_devices(BusState *bus, const char *parent_type,
     g_ptr_array_free(nic_models, true);
 }
 
+int net_hub_id_for_client(NetClientState *nc, int *id)
+{
+    (void)nc;
+    (void)id;
+    return -ENOENT;
+}
+
 static int (* const net_client_init_fun[NET_CLIENT_DRIVER__MAX])(
     const Netdev *netdev,
     const char *name,
     NetClientState *peer, Error **errp) = {
         [NET_CLIENT_DRIVER_NIC]       = net_init_nic,
+#ifdef CONFIG_SLIRP
+        [NET_CLIENT_DRIVER_USER]      = net_init_slirp,
+#endif
         [NET_CLIENT_DRIVER_TAP]       = net_init_tap,
 };
 

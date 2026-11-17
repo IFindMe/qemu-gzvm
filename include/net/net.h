@@ -231,6 +231,8 @@ void qdev_set_nic_properties(DeviceState *dev, NICInfo *nd);
 uint32_t net_crc32(const uint8_t *p, int len);
 uint32_t net_crc32_le(const uint8_t *p, int len);
 
+int net_hub_id_for_client(NetClientState *nc, int *id);
+
 #define vmstate_offset_macaddr(_state, _field)                       \
     vmstate_offset_array(_state, _field.a, uint8_t,                \
                          sizeof(typeof_field(_state, _field)))

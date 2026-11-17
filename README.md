@@ -13,15 +13,16 @@ AAudio and a small set of block/network backends.
   `virtio-keyboard-pci`, `virtio-tablet-pci`, `virtio-snd-pci`
 - Graphics: virglrenderer + OpenGL, AGL display backend (Android surface)
 - Audio: AAudio
-- Networking: TAP only (`-netdev tap`)
+- Networking: user-mode NAT (`-netdev user`, slirp) and TAP (`-netdev tap`)
 - Disks: raw images only (`-drive ...,format=raw`)
 - Libraries: glib, pixman, libffi, pcre2, libucontext, liburing, libepoxy,
   virglrenderer (all built from source by `build.sh`)
 
 ## Limitations
 
-- User-mode NAT (`-netdev user`) is not available. `CONFIG_SLIRP` is defined,
-  but this fork has no `net/slirp.c`; the only network backend is TAP.
+- User-mode networking supports IPv4/IPv6, DHCP, TFTP, `hostfwd` and
+  `guestfwd`. SMB (`smb=`) needs an `smbd` binary on the device and is not
+  usable in practice.
 - Only the `raw` block format exists. There is no `qemu-img` and no qcow2/vmdk.
   Convert images with an external `qemu-img` before use.
 - There is no USB, 9p/virtfs, TPM, vhost, guest agent or loadable modules.
@@ -61,14 +62,22 @@ outputs already exist; the QEMU build directory is recreated on every run.
 Workflow: `.github/workflows/build.yml`.
 
 - Push to `main` → build, upload the archives as workflow artifacts.
-- Push a `v*` tag → build, upload artifacts, and create a GitHub Release.
+- Push a `v*` tag → build, upload artifacts, and create a GitHub Release with
+  the compiled tarballs attached.
+- Publish a release manually → build and attach the compiled tarballs to it.
 - Manual: **Actions → Build and Release → Run workflow**. Set `release` to create
   a release and optionally provide a `version` tag.
 
 ```sh
-git tag v26.8.1
-git push origin v26.8.1
+git tag v26.8.2
+git push origin v26.8.2
 ```
+
+Release assets are `qemu-gzvm-<version>-aarch64.tar.gz` and
+`jniLibs-<version>-arm64-v8a.tar.gz`. GitHub also always lists auto-generated
+"Source code (zip/tar.gz)" links; those are not the build output. The tag must
+point to a commit that contains this workflow, otherwise its run uses the older
+workflow from that commit.
 
 The workflow downloads NDK r30-beta2, installs Meson 1.5.0, pre-populates
 `python/wheels` (needed because QEMU is configured with `--disable-download`),
@@ -111,7 +120,7 @@ chmod +x qemu-system-aarch64
   -kernel Image \
   -append "console=ttyAMA0 root=/dev/vda rw" \
   -drive file=rootfs.img,format=raw,if=virtio \
-  -netdev tap,id=n0,ifname=tap0,script=no,downscript=no \
+  -netdev user,id=n0,hostfwd=tcp::2222-:22 \
   -device virtio-net-pci,netdev=n0 \
   -nographic
 ```
@@ -142,9 +151,23 @@ Notes:
 `-display agl` renders into an Android `Surface` supplied by the host app via
 JNI. For a headless/console guest use `-nographic` instead.
 
-## Networking with TAP
+## Networking
 
-Only TAP is available. On a rooted device with TUN/TAP support:
+### User-mode NAT (no host setup)
+
+```sh
+-netdev user,id=n0,hostfwd=tcp::2222-:22 \
+-device virtio-net-pci,netdev=n0
+```
+
+The guest sees `10.0.2.15` with gateway/DNS at `10.0.2.2`/`10.0.2.3`, and
+outgoing traffic is NATed by slirp. `hostfwd` maps host ports to guest ports;
+`guestfwd` forwards guest TCP connections to a host chardev. Use
+`restrict=on` to block outbound traffic, and `net=`, `host=`, `dhcpstart=`,
+`dns=`, `tftp=`, `bootfile=`, `ipv6=on`, `ipv6-prefix=`, etc. for finer
+control. No root or TUN/TAP device is required.
+
+### TAP (bridged, needs root + TUN/TAP)
 
 ```sh
 ip tuntap add dev tap0 mode tap
@@ -153,7 +176,8 @@ ip addr add 10.0.2.1/24 dev tap0
 ```
 
 Then pass `-netdev tap,id=n0,ifname=tap0,script=no,downscript=no` to QEMU.
-There is no built-in DHCP/NAT; provide it on the host side if the guest needs it.
+TAP gives the guest layer-2 access, but there is no built-in DHCP/NAT; provide
+it on the host side if the guest needs it.
 
 ## Android JNI integration
 
@@ -215,8 +239,8 @@ replace `-display agl` with `-nographic`.
 
 - `Could not access /dev/gzvm` → the GenieZone driver is missing or not
   accessible; run as root.
-- `network backend 'user' is not compiled into this binary` → use TAP; this
-  fork has no slirp backend.
+- `Could not configure /dev/net/tun` → TAP needs root and kernel TUN/TAP
+  support; use `-netdev user` instead if you only need outbound access.
 - `Could not open '...qcow2'` → only raw images are supported.
 - `error while loading shared libraries` → keep the `lib/` directory next to the
   binaries (the `$ORIGIN/lib` RPATH expects it).

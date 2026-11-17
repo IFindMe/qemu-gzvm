@@ -11,6 +11,43 @@
   'data': {
     'str': 'str' } }
 
+{ 'struct': 'NetdevUserDomainSuffix',
+  'data': {
+    'str': 'str' } }
+
+{ 'struct': 'NetdevUserHostForward',
+  'data': {
+    'str': 'str' } }
+
+{ 'struct': 'NetdevUserGuestForward',
+  'data': {
+    'str': 'str' } }
+
+{ 'struct': 'NetdevUserOptions',
+  'data': {
+    '*hostname':  'str',
+    '*restrict':  'bool',
+    '*ipv4':      'bool',
+    '*ipv6':      'bool',
+    '*ip':        'str',
+    '*net':       'str',
+    '*host':      'str',
+    '*tftp':      'str',
+    '*bootfile':  'str',
+    '*dhcpstart': 'str',
+    '*dns':       'str',
+    '*dnssearch': ['NetdevUserDomainSuffix'],
+    '*domainname': 'str',
+    '*ipv6-prefix':      'str',
+    '*ipv6-prefixlen':   'int',
+    '*ipv6-host':        'str',
+    '*ipv6-dns':         'str',
+    '*smb':       'str',
+    '*smbserver': 'str',
+    '*hostfwd':   ['NetdevUserHostForward'],
+    '*guestfwd':  ['NetdevUserGuestForward'],
+    '*tftp-server-name': 'str' } }
+
 { 'struct': 'NetdevTapOptions',
   'data': {
     '*ifname':     'str',
@@ -19,13 +56,14 @@
     '*vnet-hdr':   'bool' } }
 
 { 'enum': 'NetClientDriver',
-  'data': [ 'none', 'nic', 'tap' ] }
+  'data': [ 'none', 'nic', 'user', 'tap' ] }
 
 { 'union': 'Netdev',
   'base': { 'id': 'str', 'type': 'NetClientDriver' },
   'discriminator': 'type',
   'data': {
     'nic':      'NetLegacyNicOptions',
+    'user':     'NetdevUserOptions',
     'tap':      'NetdevTapOptions' } }
 
 { 'enum': 'RxState', 'data': [ 'normal', 'none', 'all' ] }
