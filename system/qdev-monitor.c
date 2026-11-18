@@ -47,6 +47,7 @@ typedef struct QDevAlias
 #define QEMU_ARCH_VIRTIO_MMIO (QEMU_ARCH_M68K)
 
 static const QDevAlias qdev_alias_table[] = {
+    { "virtio-9p-pci", "virtio-9p", QEMU_ARCH_VIRTIO_PCI },
     { "virtio-blk-pci", "virtio-blk", QEMU_ARCH_VIRTIO_PCI },
     { "virtio-keyboard-pci", "virtio-keyboard", QEMU_ARCH_VIRTIO_PCI },
     { "virtio-net-pci", "virtio-net", QEMU_ARCH_VIRTIO_PCI },
