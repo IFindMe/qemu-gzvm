@@ -1062,6 +1062,40 @@ static void create_pcie(VirtMachineState *vms)
 
 }
 
+static void create_virtio_devices(const VirtMachineState *vms)
+{
+    int i;
+    hwaddr size = vms->memmap[VIRT_MMIO].size;
+    MachineState *ms = MACHINE(vms);
+
+    for (i = 0; i < vms->virtio_transports; i++) {
+        int irq = vms->irqmap[VIRT_MMIO] + i;
+        hwaddr base = vms->memmap[VIRT_MMIO].base + i * size;
+
+        sysbus_create_simple("virtio-mmio", base,
+                             qdev_get_gpio_in(vms->gic, irq));
+    }
+
+    /* Add DTB nodes in reverse order so they appear lowest address first. */
+    for (i = vms->virtio_transports - 1; i >= 0; i--) {
+        char *nodename;
+        int irq = vms->irqmap[VIRT_MMIO] + i;
+        hwaddr base = vms->memmap[VIRT_MMIO].base + i * size;
+
+        nodename = g_strdup_printf("/virtio_mmio@%" PRIx64, base);
+        qemu_fdt_add_subnode(ms->fdt, nodename);
+        qemu_fdt_setprop_string(ms->fdt, nodename,
+                                "compatible", "virtio,mmio");
+        qemu_fdt_setprop_sized_cells(ms->fdt, nodename, "reg",
+                                     2, base, 2, size);
+        qemu_fdt_setprop_cells(ms->fdt, nodename, "interrupts",
+                               GIC_FDT_IRQ_TYPE_SPI, irq,
+                               GIC_FDT_IRQ_FLAGS_EDGE_LO_HI);
+        qemu_fdt_setprop(ms->fdt, nodename, "dma-coherent", NULL, 0);
+        g_free(nodename);
+    }
+}
+
 static void create_secure_ram(VirtMachineState *vms,
  MemoryRegion *secure_sysmem)
 {
@@ -1520,6 +1554,9 @@ static void machvirt_init(MachineState *machine)
 
  create_pcie(vms);
 
+ /* Create virtio-mmio transports so non-PCI virtio devices can be plugged. */
+ create_virtio_devices(vms);
+
  vms->fw_cfg = create_fw_cfg(vms, &address_space_memory);
  rom_set_fw(vms->fw_cfg);
 
@@ -1668,6 +1705,36 @@ static void virt_set_highmem_mmio_size(Object *obj, Visitor *v,
  }
 
  extended_memmap[VIRT_HIGH_PCIE_MMIO].size = size;
+}
+
+static void virt_get_virtio_transports(Object *obj, Visitor *v,
+ const char *name, void *opaque,
+ Error **errp)
+{
+ VirtMachineState *vms = VIRT_MACHINE(obj);
+ uint8_t transports = vms->virtio_transports;
+
+ visit_type_uint8(v, name, &transports, errp);
+}
+
+static void virt_set_virtio_transports(Object *obj, Visitor *v,
+ const char *name, void *opaque,
+ Error **errp)
+{
+ VirtMachineState *vms = VIRT_MACHINE(obj);
+ uint8_t transports;
+
+ if (!visit_type_uint8(v, name, &transports, errp)) {
+ return;
+ }
+
+ if (transports > NUM_VIRTIO_TRANSPORTS) {
+ error_setg(errp, "virtio-mmio-transports must not exceed %d",
+ NUM_VIRTIO_TRANSPORTS);
+ return;
+ }
+
+ vms->virtio_transports = transports;
 }
 
 static bool virt_get_dtb_randomness(Object *obj, Error **errp)
@@ -2054,6 +2121,13 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
  "Set the high memory region size "
  "for PCI MMIO");
 
+ object_class_property_add(oc, "virtio-mmio-transports", "uint8",
+ virt_get_virtio_transports,
+ virt_set_virtio_transports,
+ NULL, NULL);
+ object_class_property_set_description(oc, "virtio-mmio-transports",
+ "Set the number of virtio-mmio transports to instantiate");
+
  object_class_property_add_str(oc, "gic-version", virt_get_gic_version,
  virt_set_gic_version);
  object_class_property_set_description(oc, "gic-version",
@@ -2118,6 +2192,8 @@ static void virt_instance_init(Object *obj)
  vms->ras = false;
 
  vms->dtb_randomness = true;
+
+ vms->virtio_transports = NUM_VIRTIO_TRANSPORTS;
 
  vms->irqmap = a15irqmap;
 

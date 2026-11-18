@@ -120,6 +120,7 @@ struct VirtMachineState {
     DeviceState *gic;
     PCIBus *bus;
     bool ns_el2_virt_timer_irq;
+    uint8_t virtio_transports;
 };
 
 #define VIRT_ECAM_ID(high) (high ? VIRT_HIGH_PCIE_ECAM : VIRT_PCIE_ECAM)

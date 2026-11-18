@@ -11,7 +11,7 @@ AAudio and a small set of block/network backends.
 - CPU: `host` (the only AArch64 CPU model registered by this fork)
 - Virtio: `virtio-blk-pci`, `virtio-net-pci`, `virtio-gpu-gl-pci`,
   `virtio-keyboard-pci`, `virtio-tablet-pci`, `virtio-snd-pci`,
-  `virtio-9p-pci`
+  `virtio-9p-pci`, plus virtio-mmio transports on the `virt` machine
 - Graphics: virglrenderer + OpenGL, AGL display backend (Android surface), VNC
 - Audio: AAudio
 - Networking: user-mode NAT (`-netdev user`, slirp) and TAP (`-netdev tap`)
@@ -216,6 +216,29 @@ equivalent explicit form is:
 
 Use `security_model=none` for a plain shared directory. Add `readonly=on` to
 export it read-only.
+
+## virtio-mmio (non-PCI transports)
+
+The `virt` machine also creates 32 virtio-mmio transports by default (device
+tree nodes `/virtio_mmio@...`). These are for guests without PCI/virtio-PCI
+support and let you use the non-PCI virtio device variants. For example, to
+export a directory over a virtio-mmio 9P transport instead of PCI:
+
+```sh
+-fsdev local,id=rootfs,path=/data/local/tmp/rootfs,security_model=none \
+-device virtio-9p-device,fsdev=rootfs,mount_tag=rootfs
+```
+
+The transport used by each `-device` is picked automatically from the free
+virtio-mmio buses. The number of transports can be changed with the machine
+property, up to the maximum of 32:
+
+```sh
+-M virt,virtio-mmio-transports=8
+```
+
+PCI virtio devices (`virtio-*-pci`, including `-virtfs`) continue to work as
+before and are the recommended default.
 
 ## Networking
 
